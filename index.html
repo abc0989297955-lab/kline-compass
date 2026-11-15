@@ -199,9 +199,166 @@
     </footer>
   </div>
 
+  <script src="data.js"></script>
   <script>
-    // NOTE: Full DATASETS embedded in original file - loading via script tag fallback
-    console.log('Placeholder - full data will be loaded');
+    const DATASETS = window.DATASETS;
+
+    const TF_LABEL = { day: '日線', week: '週線', month: '月線' };
+    const TF_UNIT = { day: '個交易日', week: '週', month: '個月' };
+
+    let currentTf = 'day';
+    let currentData = DATASETS.day;
+
+    function calcMA(data, period) {
+      const result = [];
+      for (let i = 0; i < data.length; i++) {
+        if (i < period - 1) continue;
+        let sum = 0;
+        for (let j = 0; j < period; j++) sum += data[i - j].close;
+        result.push({ time: data[i].time, value: +(sum / period).toFixed(2) });
+      }
+      return result;
+    }
+
+    function formatVol(v) {
+      if (v >= 1e8) return (v / 1e8).toFixed(2) + ' 億股';
+      if (v >= 1e4) return (v / 1e4).toFixed(0) + ' 萬股';
+      return v.toLocaleString() + ' 股';
+    }
+
+    function formatPrice(p) {
+      return p.toLocaleString('zh-TW', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' TWD';
+    }
+
+    const chartEl = document.getElementById('chart');
+    const volEl = document.getElementById('volume-chart');
+
+    const chart = LightweightCharts.createChart(chartEl, {
+      layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8b9bb0' },
+      grid: {
+        vertLines: { color: 'rgba(30,42,54,0.6)' },
+        horzLines: { color: 'rgba(30,42,54,0.6)' },
+      },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      rightPriceScale: { borderColor: '#1e2a36' },
+      timeScale: { borderColor: '#1e2a36', timeVisible: false },
+      width: chartEl.clientWidth,
+      height: chartEl.clientHeight,
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#ef4444', downColor: '#22c55e',
+      borderUpColor: '#ef4444', borderDownColor: '#22c55e',
+      wickUpColor: '#ef4444', wickDownColor: '#22c55e',
+    });
+
+    const ma5Series = chart.addLineSeries({ color: '#f6c026', lineWidth: 2, title: 'MA5', lastValueVisible: false, priceLineVisible: false });
+    const ma10Series = chart.addLineSeries({ color: '#38bdf8', lineWidth: 2, title: 'MA10', lastValueVisible: false, priceLineVisible: false });
+    const ma20Series = chart.addLineSeries({ color: '#e879f9', lineWidth: 2, title: 'MA20', lastValueVisible: false, priceLineVisible: false });
+
+    const volChart = LightweightCharts.createChart(volEl, {
+      layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8b9bb0' },
+      grid: {
+        vertLines: { color: 'rgba(30,42,54,0.4)' },
+        horzLines: { color: 'rgba(30,42,54,0.4)' },
+      },
+      rightPriceScale: { borderColor: '#1e2a36' },
+      timeScale: { borderColor: '#1e2a36', visible: true },
+      width: volEl.clientWidth,
+      height: volEl.clientHeight,
+    });
+
+    const volumeSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+    volChart.priceScale('').applyOptions({ scaleMargins: { top: 0.15, bottom: 0 } });
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      if (range) volChart.timeScale().setVisibleLogicalRange(range);
+    });
+    volChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      if (range) chart.timeScale().setVisibleLogicalRange(range);
+    });
+
+    function applySeriesVisibility() {
+      ma5Series.applyOptions({ visible: document.getElementById('toggleMA5').checked });
+      ma10Series.applyOptions({ visible: document.getElementById('toggleMA10').checked });
+      ma20Series.applyOptions({ visible: document.getElementById('toggleMA20').checked });
+    }
+
+    function loadTimeframe(tf) {
+      currentTf = tf;
+      currentData = DATASETS[tf];
+
+      const candles = currentData.map(d => ({
+        time: d.time, open: d.open, high: d.high, low: d.low, close: d.close,
+      }));
+      const volumes = currentData.map(d => ({
+        time: d.time,
+        value: d.volume,
+        color: d.close >= d.open ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.55)',
+      }));
+      const ma5 = calcMA(currentData, 5);
+      const ma10 = calcMA(currentData, 10);
+      const ma20 = calcMA(currentData, 20);
+
+      candleSeries.setData(candles);
+      volumeSeries.setData(volumes);
+      ma5Series.setData(ma5);
+      ma10Series.setData(ma10);
+      ma20Series.setData(ma20);
+      applySeriesVisibility();
+      chart.timeScale().fitContent();
+
+      document.getElementById('chartTitle').textContent = TF_LABEL[tf] + ' K 線圖';
+
+      const last = currentData[currentData.length - 1];
+      const prev = currentData.length > 1 ? currentData[currentData.length - 2] : last;
+      const chg = last.close - prev.close;
+      const chgPct = prev.close ? (chg / prev.close) * 100 : 0;
+      const chgEl = document.getElementById('lastChg');
+
+      document.getElementById('lastPrice').textContent = formatPrice(last.close);
+      chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(1) + ' (' + (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%)';
+      chgEl.className = 'chg ' + (chg >= 0 ? 'up' : 'down');
+
+      const highs = currentData.map(d => d.high);
+      const lows = currentData.map(d => d.low);
+      document.getElementById('statHigh').textContent = formatPrice(Math.max(...highs));
+      document.getElementById('statLow').textContent = formatPrice(Math.min(...lows));
+      document.getElementById('statOpen').textContent = formatPrice(last.open);
+      document.getElementById('statVol').textContent = formatVol(last.volume);
+      document.getElementById('statMA5').textContent = ma5.length ? ma5[ma5.length - 1].value.toFixed(1) : '—';
+      document.getElementById('statMA10').textContent = ma10.length ? ma10[ma10.length - 1].value.toFixed(1) : '—';
+      document.getElementById('statMA20').textContent = ma20.length ? ma20[ma20.length - 1].value.toFixed(1) : '—';
+
+      document.getElementById('rangeMeta').textContent =
+        '近 ' + currentData.length + ' ' + TF_UNIT[tf] + ' · ' + currentData[0].time + ' ~ ' + last.time;
+    }
+
+    document.querySelectorAll('.tf-group button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tf-group button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadTimeframe(btn.dataset.tf);
+      });
+    });
+
+    document.getElementById('toggleMA5').addEventListener('change', e => {
+      ma5Series.applyOptions({ visible: e.target.checked });
+    });
+    document.getElementById('toggleMA10').addEventListener('change', e => {
+      ma10Series.applyOptions({ visible: e.target.checked });
+    });
+    document.getElementById('toggleMA20').addEventListener('change', e => {
+      ma20Series.applyOptions({ visible: e.target.checked });
+    });
+
+    function resize() {
+      chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
+      volChart.applyOptions({ width: volEl.clientWidth, height: volEl.clientHeight });
+    }
+    window.addEventListener('resize', resize);
+
+    loadTimeframe('day');
   </script>
 </body>
 </html>
