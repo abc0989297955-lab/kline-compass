@@ -5,5 +5,386 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>K線羅盤｜歷史行情分析</title>
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f14; --panel: #12181f; --border: #1e2a36; --text: #e8eef5;
+      --muted: #8b9bb0; --accent: #3b82f6; --up: #ef4444; --down: #22c55e;
+      --ma5: #f6c026; --ma10: #38bdf8; --ma20: #e879f9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5;
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+    header {
+      display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+      gap: 16px; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+    }
+    .brand .tag { font-size: 11px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+    .brand h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; margin: 4px 0; }
+    .brand p { color: var(--muted); font-size: 0.9rem; max-width: 460px; }
+    .stock-badge {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px 18px; min-width: 180px; text-align: right;
+    }
+    .stock-badge .code { font-size: 1.4rem; font-weight: 700; }
+    .stock-badge .name { color: var(--muted); font-size: 0.85rem; }
+    .stock-badge .price { margin-top: 6px; font-size: 1.5rem; font-weight: 700; }
+    .stock-badge .chg { font-size: 0.9rem; }
+    .stock-badge .chg.up { color: var(--up); }
+    .stock-badge .chg.down { color: var(--down); }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 18px; margin-bottom: 20px;
+    }
+    .panel-header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 14px;
+    }
+    .panel-header h2 { font-size: 1.05rem; font-weight: 600; }
+    .panel-header .meta { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+    .tf-group {
+      display: inline-flex; background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    }
+    .tf-group button {
+      background: transparent; border: none; color: var(--muted);
+      font-size: 0.88rem; font-weight: 600; padding: 7px 14px; cursor: pointer;
+    }
+    .tf-group button:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .tf-group button.active { background: var(--accent); color: #fff; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+    .controls label {
+      display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+      font-size: 0.88rem; user-select: none; padding: 4px 10px; border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+    }
+    .controls input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+    .controls .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot.ma5 { background: var(--ma5); } .dot.ma10 { background: var(--ma10); } .dot.ma20 { background: var(--ma20); }
+    #chart { width: 100%; height: 420px; }
+    #volume-chart { width: 100%; height: 110px; margin-top: 4px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+    .stat { background: rgba(0,0,0,0.25); border-radius: 10px; padding: 12px 14px; }
+    .stat .label { color: var(--muted); font-size: 0.78rem; margin-bottom: 4px; }
+    .stat .value { font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .legend-note { margin-top: 12px; font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 12px 20px; }
+    .legend-note span::before {
+      content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle;
+    }
+    .legend-note .up::before { background: var(--up); }
+    .legend-note .down::before { background: var(--down); }
+    footer { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.82rem; }
+    footer a { color: #7dd3fc; text-decoration: none; }
+    .status { color: var(--muted); font-size: 0.9rem; padding: 24px; text-align: center; }
+    .status.error { color: #f87171; }
+    @media (max-width: 640px) {
+      .container { padding: 16px 12px 32px; }
+      .brand h1 { font-size: 1.35rem; }
+      #chart { height: 340px; }
+      .stock-badge { text-align: left; width: 100%; }
+    }
+  </style>
 </head>
-<body><p>placeholder</p></body></html>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <span class="tag">K線羅盤 · MARKET / HISTORICAL</span>
+        <h1>讓每一根 K 線，回到它發生的那一天</h1>
+        <p>近半年真實日成交資料，支援日線／週線／月線切換，並可勾選 MA5、MA10、MA20。</p>
+      </div>
+      <div class="stock-badge">
+        <div class="code">2330</div>
+        <div class="name">台積電</div>
+        <div class="price" id="lastPrice">載入中…</div>
+        <div class="chg" id="lastChg">—</div>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 id="chartTitle">日線 K 線圖</h2>
+          <div class="meta" id="rangeMeta">正在讀取行情…</div>
+        </div>
+        <div class="toolbar">
+          <div class="tf-group">
+            <button type="button" data-tf="day" class="active">日線</button>
+            <button type="button" data-tf="week">週線</button>
+            <button type="button" data-tf="month">月線</button>
+          </div>
+          <div class="controls">
+            <label><input type="checkbox" id="toggleMA5" checked /><span class="dot ma5"></span> MA5</label>
+            <label><input type="checkbox" id="toggleMA10" checked /><span class="dot ma10"></span> MA10</label>
+            <label><input type="checkbox" id="toggleMA20" checked /><span class="dot ma20"></span> MA20</label>
+          </div>
+        </div>
+      </div>
+      <div id="status" class="status">正在載入 Yahoo Finance 近半年資料…</div>
+      <div id="chart" style="display:none"></div>
+      <div id="volume-chart" style="display:none"></div>
+      <div class="legend-note" id="legend" style="display:none">
+        <span class="up">上漲 / 收盤 ≥ 開盤</span>
+        <span class="down">下跌 / 收盤 ＜ 開盤</span>
+        <span>移動游標可查看 OHLC</span>
+      </div>
+    </section>
+
+    <section class="panel" id="statsPanel" style="display:none">
+      <div class="panel-header"><h2>區間摘要</h2></div>
+      <div class="stats">
+        <div class="stat"><div class="label">區間最高</div><div class="value" id="statHigh">—</div></div>
+        <div class="stat"><div class="label">區間最低</div><div class="value" id="statLow">—</div></div>
+        <div class="stat"><div class="label">最新開盤</div><div class="value" id="statOpen">—</div></div>
+        <div class="stat"><div class="label">最新成交量</div><div class="value" id="statVol">—</div></div>
+        <div class="stat"><div class="label">MA5</div><div class="value" id="statMA5">—</div></div>
+        <div class="stat"><div class="label">MA10</div><div class="value" id="statMA10">—</div></div>
+        <div class="stat"><div class="label">MA20</div><div class="value" id="statMA20">—</div></div>
+      </div>
+    </section>
+
+    <footer>
+      <p>日線資料來自 Yahoo Finance（2330.TW）近約半年；週線、月線由日線聚合。僅供展示，不構成投資建議。</p>
+      <p style="margin-top:6px">圖表：<a href="https://tradingview.github.io/lightweight-charts/" target="_blank" rel="noopener">Lightweight Charts</a> · 紅漲綠跌</p>
+    </footer>
+  </div>
+
+  <script>
+    const TF_LABEL = { day: '日線', week: '週線', month: '月線' };
+    const TF_UNIT = { day: '個交易日', week: '週', month: '個月' };
+    let DATASETS = null;
+
+    function calcMA(data, period) {
+      const result = [];
+      for (let i = 0; i < data.length; i++) {
+        if (i < period - 1) continue;
+        let sum = 0;
+        for (let j = 0; j < period; j++) sum += data[i - j].close;
+        result.push({ time: data[i].time, value: +(sum / period).toFixed(2) });
+      }
+      return result;
+    }
+
+    function formatVol(v) {
+      if (v >= 1e8) return (v / 1e8).toFixed(2) + ' 億股';
+      if (v >= 1e4) return (v / 1e4).toFixed(0) + ' 萬股';
+      return v.toLocaleString() + ' 股';
+    }
+    function formatPrice(p) {
+      return p.toLocaleString('zh-TW', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' TWD';
+    }
+
+    function aggregate(data, mode) {
+      const buckets = {}, order = [];
+      for (const d of data) {
+        const dt = new Date(d.time + 'T00:00:00Z');
+        let key;
+        if (mode === 'week') {
+          const tmp = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
+          const dayNum = tmp.getUTCDay() || 7;
+          tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+          const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+          const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+          key = tmp.getUTCFullYear() + '-W' + String(weekNo).padStart(2, '0');
+        } else {
+          key = d.time.slice(0, 7);
+        }
+        if (!buckets[key]) {
+          buckets[key] = {
+            time: mode === 'week' ? d.time : key + '-01',
+            open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume
+          };
+          order.push(key);
+        } else {
+          const b = buckets[key];
+          b.high = Math.max(b.high, d.high);
+          b.low = Math.min(b.low, d.low);
+          b.close = d.close;
+          b.volume += d.volume;
+        }
+      }
+      return order.map(k => ({
+        time: buckets[k].time,
+        open: +buckets[k].open.toFixed(1),
+        high: +buckets[k].high.toFixed(1),
+        low: +buckets[k].low.toFixed(1),
+        close: +buckets[k].close.toFixed(1),
+        volume: buckets[k].volume | 0
+      }));
+    }
+
+    async function fetchDaily() {
+      const yf = 'https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?interval=1d&range=6mo';
+      const proxies = [
+        yf,
+        'https://corsproxy.io/?' + encodeURIComponent(yf),
+        'https://api.allorigins.win/raw?url=' + encodeURIComponent(yf)
+      ];
+      let lastErr;
+      for (const url of proxies) {
+        try {
+          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const json = await res.json();
+          const r = json.chart && json.chart.result && json.chart.result[0];
+          if (!r) throw new Error('無資料');
+          const ts = r.timestamp || [];
+          const q = r.indicators.quote[0];
+          const out = [];
+          for (let i = 0; i < ts.length; i++) {
+            const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i], v = q.volume[i];
+            if (o == null || h == null || l == null || c == null) continue;
+            const d = new Date(ts[i] * 1000);
+            const time = d.toISOString().slice(0, 10);
+            out.push({
+              time,
+              open: +(+o).toFixed(1),
+              high: +(+h).toFixed(1),
+              low: +(+l).toFixed(1),
+              close: +(+c).toFixed(1),
+              volume: (v | 0)
+            });
+          }
+          if (!out.length) throw new Error('空資料');
+          return out;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      throw lastErr || new Error('無法取得資料');
+    }
+
+    let chart, volChart, candleSeries, volumeSeries, ma5Series, ma10Series, ma20Series;
+
+    function initCharts() {
+      const chartEl = document.getElementById('chart');
+      const volEl = document.getElementById('volume-chart');
+      chart = LightweightCharts.createChart(chartEl, {
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8b9bb0' },
+        grid: { vertLines: { color: 'rgba(30,42,54,0.6)' }, horzLines: { color: 'rgba(30,42,54,0.6)' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: '#1e2a36' },
+        timeScale: { borderColor: '#1e2a36', timeVisible: false },
+        width: chartEl.clientWidth, height: chartEl.clientHeight
+      });
+      candleSeries = chart.addCandlestickSeries({
+        upColor: '#ef4444', downColor: '#22c55e',
+        borderUpColor: '#ef4444', borderDownColor: '#22c55e',
+        wickUpColor: '#ef4444', wickDownColor: '#22c55e'
+      });
+      ma5Series = chart.addLineSeries({ color: '#f6c026', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+      ma10Series = chart.addLineSeries({ color: '#38bdf8', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+      ma20Series = chart.addLineSeries({ color: '#e879f9', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+
+      volChart = LightweightCharts.createChart(volEl, {
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#8b9bb0' },
+        grid: { vertLines: { color: 'rgba(30,42,54,0.4)' }, horzLines: { color: 'rgba(30,42,54,0.4)' } },
+        rightPriceScale: { borderColor: '#1e2a36' },
+        timeScale: { borderColor: '#1e2a36', visible: true },
+        width: volEl.clientWidth, height: volEl.clientHeight
+      });
+      volumeSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+      volChart.priceScale('').applyOptions({ scaleMargins: { top: 0.15, bottom: 0 } });
+
+      chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range) volChart.timeScale().setVisibleLogicalRange(range);
+      });
+      volChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range) chart.timeScale().setVisibleLogicalRange(range);
+      });
+
+      window.addEventListener('resize', () => {
+        chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
+        volChart.applyOptions({ width: volEl.clientWidth, height: volEl.clientHeight });
+      });
+    }
+
+    function applyMAVisibility() {
+      ma5Series.applyOptions({ visible: document.getElementById('toggleMA5').checked });
+      ma10Series.applyOptions({ visible: document.getElementById('toggleMA10').checked });
+      ma20Series.applyOptions({ visible: document.getElementById('toggleMA20').checked });
+    }
+
+    function loadTimeframe(tf) {
+      const currentData = DATASETS[tf];
+      const candles = currentData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close }));
+      const volumes = currentData.map(d => ({
+        time: d.time, value: d.volume,
+        color: d.close >= d.open ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.55)'
+      }));
+      const ma5 = calcMA(currentData, 5);
+      const ma10 = calcMA(currentData, 10);
+      const ma20 = calcMA(currentData, 20);
+
+      candleSeries.setData(candles);
+      volumeSeries.setData(volumes);
+      ma5Series.setData(ma5);
+      ma10Series.setData(ma10);
+      ma20Series.setData(ma20);
+      applyMAVisibility();
+      chart.timeScale().fitContent();
+
+      document.getElementById('chartTitle').textContent = TF_LABEL[tf] + ' K 線圖';
+      const last = currentData[currentData.length - 1];
+      const prev = currentData.length > 1 ? currentData[currentData.length - 2] : last;
+      const chg = last.close - prev.close;
+      const chgPct = prev.close ? (chg / prev.close) * 100 : 0;
+      const chgEl = document.getElementById('lastChg');
+      document.getElementById('lastPrice').textContent = formatPrice(last.close);
+      chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(1) + ' (' + (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%)';
+      chgEl.className = 'chg ' + (chg >= 0 ? 'up' : 'down');
+
+      document.getElementById('statHigh').textContent = formatPrice(Math.max(...currentData.map(d => d.high)));
+      document.getElementById('statLow').textContent = formatPrice(Math.min(...currentData.map(d => d.low)));
+      document.getElementById('statOpen').textContent = formatPrice(last.open);
+      document.getElementById('statVol').textContent = formatVol(last.volume);
+      document.getElementById('statMA5').textContent = ma5.length ? ma5[ma5.length - 1].value.toFixed(1) : '—';
+      document.getElementById('statMA10').textContent = ma10.length ? ma10[ma10.length - 1].value.toFixed(1) : '—';
+      document.getElementById('statMA20').textContent = ma20.length ? ma20[ma20.length - 1].value.toFixed(1) : '—';
+      document.getElementById('rangeMeta').textContent =
+        '近 ' + currentData.length + ' ' + TF_UNIT[tf] + ' · ' + currentData[0].time + ' ~ ' + last.time;
+    }
+
+    document.querySelectorAll('.tf-group button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!DATASETS) return;
+        document.querySelectorAll('.tf-group button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadTimeframe(btn.dataset.tf);
+      });
+    });
+    ['toggleMA5', 'toggleMA10', 'toggleMA20'].forEach((id) => {
+      document.getElementById(id).addEventListener('change', () => {
+        if (!ma5Series) return;
+        applyMAVisibility();
+      });
+    });
+
+    (async function main() {
+      const status = document.getElementById('status');
+      try {
+        const daily = await fetchDaily();
+        DATASETS = {
+          day: daily,
+          week: aggregate(daily, 'week'),
+          month: aggregate(daily, 'month')
+        };
+        status.style.display = 'none';
+        document.getElementById('chart').style.display = 'block';
+        document.getElementById('volume-chart').style.display = 'block';
+        document.getElementById('legend').style.display = 'flex';
+        document.getElementById('statsPanel').style.display = 'block';
+        initCharts();
+        loadTimeframe('day');
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = '載入失敗：' + (e && e.message ? e.message : e) + '。請稍後重新整理。';
+        console.error(e);
+      }
+    })();
+  </script>
+</body>
+</html>
